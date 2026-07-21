@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>lull — bedtime story reader</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#000;color:#fff;font-family:Georgia,"Times New Roman",serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overscroll-behavior:none;touch-action:manipulation}
+body{display:flex;flex-direction:column}
+::selection{background:rgba(255,255,255,0.2)}
+/* Setup screen */
+#setup{display:flex;flex-direction:column;min-height:100dvh;padding:clamp(16px,5vw,40px);background:#0a0a0a}
+#setup h1{font-size:28px;font-weight:400;letter-spacing:-0.3px;margin-bottom:4px;color:rgba(255,255,255,0.6)}
+#setup .sub{font-size:14px;color:rgba(255,255,255,0.35);margin-bottom:24px}
+#setup label{font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:8px;display:block}
+#story-input{flex:1;min-height:200px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:16px;color:rgba(255,255,255,0.8);font-family:Georgia,"Times New Roman",serif;font-size:16px;line-height:1.6;resize:vertical;outline:none;transition:border-color 0.2s}
+#story-input:focus{border-color:rgba(255,255,255,0.25)}
+#story-input::placeholder{color:rgba(255,255,255,0.2)}
+/* Controls */
+.controls{display:flex;justify-content:center;gap:clamp(24px,8vw,64px);padding:24px 0 16px;flex-wrap:wrap}
+.control-group{display:flex;align-items:center;gap:12px}
+.ctrl-btn{width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.6);font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.15s;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation;line-height:1}
+.ctrl-btn:active{transform:scale(0.92);background:rgba(255,255,255,0.1)}
+.ctrl-label{display:flex;align-items:center;gap:8px;min-width:60px;justify-content:center;color:rgba(255,255,255,0.5);font-size:14px}
+.ctrl-label .aa{font-family:Georgia,"Times New Roman",serif;transition:font-size 0.15s}
+.ctrl-label .val{min-width:28px;text-align:center;font-variant-numeric:tabular-nums}
+.sun-svg{transition:opacity 0.15s,transform 0.15s;width:22px;height:22px}
+#start-btn{width:100%;padding:14px;border:none;border-radius:8px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);font-family:Georgia,"Times New Roman",serif;font-size:17px;cursor:pointer;transition:all 0.2s;touch-action:manipulation;margin-top:4px}
+#start-btn:active{transform:scale(0.98);background:rgba(255,255,255,0.15)}
+/* Reading screen */
+#reader{display:none;flex-direction:column;min-height:100dvh;background:#000;position:relative}
+#reader.active{display:flex}
+#story-content{padding:clamp(20px,5vw,48px) clamp(16px,5vw,40px);padding-bottom:30vh;max-width:min(680px,90vw);margin:0 auto;width:100%;line-height:1.7;font-size:20px;color:rgba(255,255,255,0.15)}
+#story-content p{margin-bottom:1em}
+/* Overlay */
+#overlay{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:10;transition:opacity 0.3s ease;opacity:0}
+#overlay.visible{opacity:1;pointer-events:auto}
+#overlay-bg{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,0.85) 0%,rgba(0,0,0,0.5) 30%,transparent 50%,transparent 70%,rgba(0,0,0,0.5) 85%,rgba(0,0,0,0.85) 100%)}
+#overlay-content{position:relative;z-index:1;display:flex;flex-direction:column;height:100%;justify-content:space-between;padding:clamp(20px,5vw,40px)}
+.overlay-top{display:flex;justify-content:space-between;align-items:flex-start}
+.overlay-bottom{display:flex;justify-content:center}
+#back-btn{background:none;border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.4);font-family:Georgia,"Times New Roman",serif;font-size:14px;padding:8px 16px;border-radius:6px;cursor:pointer;transition:all 0.15s;touch-action:manipulation;pointer-events:auto;-webkit-tap-highlight-color:transparent}
+#back-btn:active{background:rgba(255,255,255,0.05)}
+/* Hint */
+#hint{position:fixed;bottom:clamp(20px,5vw,40px);left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.2);font-size:13px;font-family:Georgia,"Times New Roman",serif;transition:opacity 0.5s ease;z-index:5;text-align:center}
+#hint.hidden{opacity:0}
+/* Utilities */
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<div id="setup">
+  <h1>lull</h1>
+  <p class="sub">Paste your bedtime story below</p>
+  <label for="story-input">Story text</label>
+  <textarea id="story-input" placeholder="Paste a story here… (1000 words or whatever works)"></textarea>
+  <div class="controls">
+    <div class="control-group">
+      <button class="ctrl-btn" id="font-down" aria-label="Decrease font size">−</button>
+      <span class="ctrl-label">
+        <span class="aa" id="aa-preview">Aa</span>
+        <span class="val" id="font-val">20</span>
+      </span>
+      <button class="ctrl-btn" id="font-up" aria-label="Increase font size">+</button>
+    </div>
+    <div class="control-group">
+      <button class="ctrl-btn" id="bright-down" aria-label="Decrease brightness">−</button>
+      <span class="ctrl-label">
+        <svg class="sun-svg" id="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <span class="val" id="bright-val">15%</span>
+      </span>
+      <button class="ctrl-btn" id="bright-up" aria-label="Increase brightness">+</button>
+    </div>
+  </div>
+  <button id="start-btn">Start Reading</button>
+</div>
+
+<div id="reader">
+  <div id="story-content"></div>
+  <div id="hint">Tap anywhere for controls</div>
+  <div id="overlay">
+    <div id="overlay-bg"></div>
+    <div id="overlay-content">
+      <div class="overlay-top">
+        <button id="back-btn" aria-label="New story">←&thinsp;New Story</button>
+      </div>
+      <div class="overlay-bottom">
+        <div class="controls">
+          <div class="control-group">
+            <button class="ctrl-btn" id="reader-font-down" aria-label="Decrease font size">−</button>
+            <span class="ctrl-label">
+              <span class="aa" id="reader-aa-preview">Aa</span>
+              <span class="val" id="reader-font-val">20</span>
+            </span>
+            <button class="ctrl-btn" id="reader-font-up" aria-label="Increase font size">+</button>
+          </div>
+          <div class="control-group">
+            <button class="ctrl-btn" id="reader-bright-down" aria-label="Decrease brightness">−</button>
+            <span class="ctrl-label">
+              <svg class="sun-svg" id="reader-sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              <span class="val" id="reader-bright-val">15%</span>
+            </span>
+            <button class="ctrl-btn" id="reader-bright-up" aria-label="Increase brightness">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+var LS_KEY = 'lullState';
+
+var state = {
+  storyText: '',
+  fontSize: 20,
+  brightness: 15,
+  scrollY: 0
+};
+
+var MIN_FONT = 14, MAX_FONT = 48, FONT_STEP = 2;
+var MIN_BRIGHT = 5, MAX_BRIGHT = 100, BRIGHT_STEP = 5;
+
+var wakeLock = null;
+
+// DOM refs
+var setupEl = document.getElementById('setup');
+var readerEl = document.getElementById('reader');
+var storyInput = document.getElementById('story-input');
+var storyContent = document.getElementById('story-content');
+var startBtn = document.getElementById('start-btn');
+var overlay = document.getElementById('overlay');
+var hint = document.getElementById('hint');
+var backBtn = document.getElementById('back-btn');
+
+// Font controls
+var fontDown = document.getElementById('font-down');
+var fontUp = document.getElementById('font-up');
+var fontVal = document.getElementById('font-val');
+var aaPreview = document.getElementById('aa-preview');
+var readerFontDown = document.getElementById('reader-font-down');
+var readerFontUp = document.getElementById('reader-font-up');
+var readerFontVal = document.getElementById('reader-font-val');
+var readerAaPreview = document.getElementById('reader-aa-preview');
+
+// Brightness controls
+var brightDown = document.getElementById('bright-down');
+var brightUp = document.getElementById('bright-up');
+var brightVal = document.getElementById('bright-val');
+var sunIcon = document.getElementById('sun-icon');
+var readerBrightDown = document.getElementById('reader-bright-down');
+var readerBrightUp = document.getElementById('reader-bright-up');
+var readerBrightVal = document.getElementById('reader-bright-val');
+var readerSunIcon = document.getElementById('reader-sun-icon');
+
+function loadState() {
+  try {
+    var raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      var saved = JSON.parse(raw);
+      state.storyText = saved.storyText || '';
+      state.fontSize = saved.fontSize || 20;
+      state.brightness = saved.brightness !== undefined ? saved.brightness : 15;
+      state.scrollY = saved.scrollY || 0;
+    }
+  } catch(e) {}
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      storyText: state.storyText,
+      fontSize: state.fontSize,
+      brightness: state.brightness,
+      scrollY: window.scrollY || 0
+    }));
+  } catch(e) {}
+}
+
+function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
+
+function updateSetupUI() {
+  fontVal.textContent = state.fontSize;
+  aaPreview.style.fontSize = state.fontSize + 'px';
+  brightVal.textContent = state.brightness + '%';
+  var sunOpacity = clamp(0.15 + (state.brightness / 100) * 0.85, 0.1, 1);
+  var sunScale = 0.6 + (state.brightness / 100) * 0.6;
+  sunIcon.style.opacity = sunOpacity;
+  sunIcon.style.transform = 'scale(' + sunScale + ')';
+}
+
+function updateReaderUI() {
+  storyContent.style.fontSize = state.fontSize + 'px';
+  storyContent.style.color = 'rgba(255,255,255,' + (state.brightness / 100) + ')';
+  readerFontVal.textContent = state.fontSize;
+  readerAaPreview.style.fontSize = state.fontSize + 'px';
+  readerBrightVal.textContent = state.brightness + '%';
+  var sunOpacity = clamp(0.15 + (state.brightness / 100) * 0.85, 0.1, 1);
+  var sunScale = 0.6 + (state.brightness / 100) * 0.6;
+  readerSunIcon.style.opacity = sunOpacity;
+  readerSunIcon.style.transform = 'scale(' + sunScale + ')';
+}
+
+function renderStory() {
+  var text = state.storyText.trim();
+  var html = '';
+  var paragraphs = text.split(/\n\s*\n/);
+  for (var i = 0; i < paragraphs.length; i++) {
+    var p = paragraphs[i].replace(/\n/g, ' ').trim();
+    if (p) html += '<p>' + p + '</p>';
+  }
+  if (!html) html = '<p>' + text.replace(/\n/g, ' ') + '</p>';
+  storyContent.innerHTML = html;
+}
+
+function enterReadingMode() {
+  state.storyText = storyInput.value;
+  if (!state.storyText.trim()) return;
+  saveState();
+  renderStory();
+  updateReaderUI();
+  setupEl.style.display = 'none';
+  readerEl.classList.add('active');
+  requestWakeLock();
+  showHint();
+  // Restore scroll position after render
+  if (state.scrollY > 0) {
+    requestAnimationFrame(function fn() {
+      if (document.body.scrollHeight > state.scrollY) {
+        window.scrollTo(0, state.scrollY);
+      } else {
+        requestAnimationFrame(fn);
+      }
+    });
+  }
+}
+
+function exitReadingMode(force) {
+  if (!force && state.storyText.trim() && state.scrollY > 10) {
+    if (!confirm('Discard current story and start a new one?')) return;
+  }
+  releaseWakeLock();
+  readerEl.classList.remove('active');
+  setupEl.style.display = 'flex';
+  state.scrollY = 0;
+  state.storyText = '';
+  storyInput.value = '';
+  saveState();
+}
+
+// Wake Lock
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+    }
+  } catch(e) {}
+}
+function releaseWakeLock() {
+  if (wakeLock) {
+    try { wakeLock.release(); } catch(e) {}
+    wakeLock = null;
+  }
+}
+document.addEventListener('visibilitychange', function() {
+  if (readerEl.classList.contains('active') && document.visibilityState === 'visible') {
+    requestWakeLock();
+  }
+});
+
+// Overlay auto-hide
+var overlayTimer = null;
+function showOverlay() {
+  overlay.classList.add('visible');
+  hideHint();
+  clearTimeout(overlayTimer);
+  overlayTimer = setTimeout(function() {
+    overlay.classList.remove('visible');
+    showHint();
+  }, 3000);
+}
+
+function hideHint() {
+  hint.classList.add('hidden');
+}
+function showHint() {
+  if (!overlay.classList.contains('visible')) {
+    hint.classList.remove('hidden');
+  }
+}
+
+// Click reader to show overlay
+readerEl.addEventListener('click', function(e) {
+  if (overlay.classList.contains('visible')) {
+    // Don't toggle off if clicking inside overlay
+    if (e.target.closest('#overlay-content')) return;
+    overlay.classList.remove('visible');
+    showHint();
+  } else {
+    showOverlay();
+  }
+});
+
+// Scroll save
+var scrollTimer = null;
+window.addEventListener('scroll', function() {
+  clearTimeout(scrollTimer);
+  scrollTimer = setTimeout(function() {
+    state.scrollY = window.scrollY || 0;
+    saveState();
+  }, 200);
+});
+
+// Font adjustment
+function adjustFontSetup(delta) {
+  state.fontSize = clamp(state.fontSize + delta * FONT_STEP, MIN_FONT, MAX_FONT);
+  updateSetupUI();
+  saveState();
+}
+function adjustFontReader(delta) {
+  state.fontSize = clamp(state.fontSize + delta * FONT_STEP, MIN_FONT, MAX_FONT);
+  updateReaderUI();
+  updateSetupUI();
+  saveState();
+  showOverlay(); // reset auto-hide timer
+}
+
+// Brightness adjustment
+function adjustBrightSetup(delta) {
+  state.brightness = clamp(state.brightness + delta * BRIGHT_STEP, MIN_BRIGHT, MAX_BRIGHT);
+  updateSetupUI();
+  saveState();
+}
+function adjustBrightReader(delta) {
+  state.brightness = clamp(state.brightness + delta * BRIGHT_STEP, MIN_BRIGHT, MAX_BRIGHT);
+  updateReaderUI();
+  updateSetupUI();
+  saveState();
+  showOverlay();
+}
+
+// Event listeners (setup)
+fontDown.addEventListener('click', function(){adjustFontSetup(-1)});
+fontUp.addEventListener('click', function(){adjustFontSetup(1)});
+brightDown.addEventListener('click', function(){adjustBrightSetup(-1)});
+brightUp.addEventListener('click', function(){adjustBrightSetup(1)});
+startBtn.addEventListener('click', enterReadingMode);
+
+// Event listeners (reader)
+readerFontDown.addEventListener('click', function(e){e.stopPropagation();adjustFontReader(-1)});
+readerFontUp.addEventListener('click', function(e){e.stopPropagation();adjustFontReader(1)});
+readerBrightDown.addEventListener('click', function(e){e.stopPropagation();adjustBrightReader(-1)});
+readerBrightUp.addEventListener('click', function(e){e.stopPropagation();adjustBrightReader(1)});
+backBtn.addEventListener('click', function(e){e.stopPropagation();exitReadingMode(false)});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+  if (readerEl.classList.contains('active')) {
+    if (e.key === 'Escape') { exitReadingMode(false); e.preventDefault(); }
+  }
+});
+
+// Init
+loadState();
+updateSetupUI();
+if (state.storyText) {
+  storyInput.value = state.storyText;
+  enterReadingMode();
+}
+
+})();
+</script>
+</body>
+</html>
